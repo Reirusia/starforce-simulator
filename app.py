@@ -276,7 +276,7 @@ def calc(now, target, N, guard_destroy, sunday, starcatch):
 def web():
     now = st.number_input('현재 스타포스(기본 15)', 15, 24, value=None)
     target = st.number_input('목표 스타포스(기본 22)', 16, 25, value=None)
-    N = st.number_input('시행횟수(기본 100,000)', 1, 1000000, value=None, step=10000)
+    N = st.number_input('시행횟수(기본 100,000)', 1, 300000, value=None, step=10000)
 
     starcatch = st.checkbox('스타캐치 사용', value=True)
     guard_destroy = st.checkbox('파괴방지', value=True)
