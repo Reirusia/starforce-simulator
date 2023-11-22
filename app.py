@@ -214,7 +214,7 @@ def calc(now, target, N, guard_destroy, sunday, starcatch):
     
     # Create DataFrame
     star_succ_level_df = pd.DataFrame(star_succ_level_dict, index=['count']).T.reset_index()
-    starcatch_chart = chart(star_succ_level_df, 'index', 'count', df.shape[0], '스타캐치로 실패할 거 성공')
+    starcatch_chart = chart(star_succ_level_df, 'index', 'count', df.shape[0], '스타캐치로 실패할 거 성공', True)
 
 
     #######################
@@ -287,4 +287,8 @@ def web():
             calc(now, target, N, guard_destroy, sunday, starcatch)
 
 if __name__ == '__main__':
-    web()
+    # web()
+    now = 15
+    target = 22
+
+    df = try_N(now, target, N = 100000, guard_destroy=False, sunday=False, starcatch=True)
