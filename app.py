@@ -204,6 +204,9 @@ def calc(now, target, N, guard_destroy, sunday, starcatch):
     star_succ_level_values = df['star_succ_level'].value_counts()
     star_succ_level_dict = {}
 
+    for i in range(15, target):
+        star_succ_level_dict[i] = 0
+
     for index, value in star_succ_level_values.items():
         for i in range(now, target):
             if star_succ_level_dict.get(i):
@@ -284,4 +287,8 @@ def web():
             calc(now, target, N, guard_destroy, sunday, starcatch)
 
 if __name__ == '__main__':
-    web()
+    # web()
+    now = 15
+    target = 22
+
+    df = try_N(now, target, N = 100000, guard_destroy=False, sunday=False, starcatch=True)
