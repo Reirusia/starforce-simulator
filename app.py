@@ -6,8 +6,10 @@ import altair as alt
 from multiprocessing import Pool
 
 
-success = 0.3
-destroy = {15: 0.021, 16: 0.021, 17: 0.021, 18: 0.028, 19: 0.028, 20: 0.07, 21: 0.07}
+success = {i: 0.3 for i in range(15, 22)}
+for i in range(3):
+    success[i+22] = 0.01 * (3 - i)
+destroy = {15: 0.021, 16: 0.021, 17: 0.021, 18: 0.028, 19: 0.028, 20: 0.07, 21: 0.07, 22:0.194, 23:0.294, 24:0.396}
 
 
 def try_N(now, target, N = 100000, guard_destroy=False, sunday=False, starcatch=False):
@@ -101,7 +103,8 @@ def reinforce(now: int, guard_destroy: bool, sunday: bool, starcatch: bool):
     d = dice()
 
     # starcatch
-    adjusted_success = success
+    succ = success[now]
+    adjusted_success = succ
     if starcatch:
         adjusted_success *= 1.05
     
@@ -124,7 +127,7 @@ def reinforce(now: int, guard_destroy: bool, sunday: bool, starcatch: bool):
         # success
 
         # success by starcatch
-        if starcatch and not (d >= 1 - success):
+        if starcatch and not (d >= 1 - succ):
             star_succ = True
             star_succ_level = now
 
@@ -216,7 +219,7 @@ def calc(now, target, N, guard_destroy, sunday, starcatch):
         star_succ_level_dict[f'{i}'] = 0
 
     for index, value in star_succ_level_values.items():
-        for i in range(now, target):
+        for i in range(15, target):
             star_succ_level_dict[f'{i}'] += index.count(i) * value
     
     for i in range(15, target):
