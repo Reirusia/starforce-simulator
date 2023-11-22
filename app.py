@@ -287,8 +287,4 @@ def web():
             calc(now, target, N, guard_destroy, sunday, starcatch)
 
 if __name__ == '__main__':
-    # web()
-    now = 15
-    target = 22
-
-    df = try_N(now, target, N = 100000, guard_destroy=False, sunday=False, starcatch=True)
+    web()
