@@ -194,6 +194,14 @@ def calc(now, target, N, guard_destroy, sunday, starcatch):
     #########################
     destroyed_levels = df['destroyed_level'].value_counts()
     destroyed_levels = destroyed_levels.reset_index()
+
+    # add 15, 16 for using guard 
+    for i in range(now, target):
+        if i > 16:
+            break
+        if  i not in destroyed_levels['destroyed_level'].values:
+            new_row = pd.DataFrame({'destroyed_level': [i], 'count': [0]})
+            destroyed_levels = pd.concat([destroyed_levels, new_row], ignore_index=True)
     destroyed_level_chart = chart(destroyed_levels, 'destroyed_level', 'count', df.shape[0], '파괴횟수', True)
 
 
@@ -205,12 +213,15 @@ def calc(now, target, N, guard_destroy, sunday, starcatch):
     star_succ_level_dict = {}
 
     for i in range(15, target):
-        star_succ_level_dict[i] = 0
+        star_succ_level_dict[f'{i}'] = 0
 
     for index, value in star_succ_level_values.items():
         for i in range(now, target):
-            if star_succ_level_dict.get(i):
-                star_succ_level_dict[i] += index.count(i) * value
+            star_succ_level_dict[f'{i}'] += index.count(i) * value
+    
+    for i in range(15, target):
+        if star_succ_level_dict[f'{i}'] == 0:
+            del star_succ_level_dict[f'{i}']
     
     # Create DataFrame
     star_succ_level_df = pd.DataFrame(star_succ_level_dict, index=['count']).T.reset_index()
@@ -264,7 +275,7 @@ def calc(now, target, N, guard_destroy, sunday, starcatch):
 
 def web():
     now = st.number_input('현재 스타포스(기본 15)', 15, 24, value=None)
-    target = st.number_input('목표 스타포스(기본 22)', 0, 25, value=None)
+    target = st.number_input('목표 스타포스(기본 22)', 16, 25, value=None)
     N = st.number_input('시행횟수(기본 100,000)', 1, 1000000, value=None, step=10000)
 
     starcatch = st.checkbox('스타캐치 사용', value=True)
@@ -287,8 +298,4 @@ def web():
             calc(now, target, N, guard_destroy, sunday, starcatch)
 
 if __name__ == '__main__':
-    # web()
-    now = 15
-    target = 22
-
-    df = try_N(now, target, N = 100000, guard_destroy=False, sunday=False, starcatch=True)
+    web()
