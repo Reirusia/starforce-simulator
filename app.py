@@ -302,6 +302,8 @@ def calc(now, target, level, N, guard_destroy, succ_on_15, starcatch, discount_3
         if star_succ_level_dict[f'{i}'] == 0:
             del star_succ_level_dict[f'{i}']
     
+    if not star_succ_level_dict:
+        star_succ_level_dict[f'{now}'] = 0
     # Create DataFrame
     star_succ_level_df = pd.DataFrame(star_succ_level_dict, index=['count']).T.reset_index()
     starcatch_chart = chart(star_succ_level_df, 'index', 'count', df.shape[0], '스타캐치로 실패할 거 성공', True)
