@@ -6,36 +6,46 @@ import altair as alt
 from multiprocessing import Pool
 
 
-success = {i: 0.3 for i in range(15, 22)}
+success = {i: round(0.95 - (0.05 * i), 2) for i in range(3)}
+succ2 = {i: round(1 - (0.05 * i), 2) for i in range(3, 15)}
+succ3 = {i: 0.3 for i in range(15, 22)}
 for i in range(3):
-    success[i+22] = 0.01 * (3 - i)
-destroy = {15: 0.021, 16: 0.021, 17: 0.021, 18: 0.028, 19: 0.028, 20: 0.07, 21: 0.07, 22:0.194, 23:0.294, 24:0.396}
+    succ3[i+22] = 0.01 * (3 - i)
 
+success.update(succ2)
+success.update(succ3)
 
-def try_N(now, target, N = 100000, guard_destroy=False, sunday=False, starcatch=False):
+destroy = {i: 0 for i in range(15)}
+destroy2 = {15: 0.021, 16: 0.021, 17: 0.021, 18: 0.028, 19: 0.028, 20: 0.07, 21: 0.07, 22:0.194, 23:0.294, 24:0.396}
+
+destroy.update(destroy2)
+
+def try_N(now, target, level, N = 100000, guard_destroy=False, succ_on_15=False, starcatch=False, discount_30p=False):
     # result = []
 
     # for _ in range(N):
-    #     r = try_once(now, target, guard_destroy, sunday, starcatch)
+    #     r = try_once(now, target, guard_destroy, succ_on_15, starcatch)
     #     result.append(r)
     with Pool() as p:
-        result = p.map(try_once, [(now, target, guard_destroy, sunday, starcatch)]*N)
+        result = p.map(try_once, [(now, target, level, guard_destroy, succ_on_15, starcatch, discount_30p)]*N)
     
 
-    df = pd.DataFrame(result, columns=['level', 'trial', 'guard_number', 'guard_level', 'star_succ_level', 'destroyed_level'], dtype=object)
+    df = pd.DataFrame(result, columns=['level', 'trial', 'guard_number', 'guard_level', 'star_succ_level', 'destroyed_level', 'cost'], dtype=object)
 
     return df
 
 def try_once(args):
-    now, target, guard_destroy, sunday, starcatch = args
+    now, target, level, guard_destroy, succ_on_15, starcatch, discount_30p = args
 
     trial = 0
     guard = 0
     guard_level_list = []
     star_succ_level_list = []
+    cost = 0
     while (True):
         trial += 1
-        now, g, guard_level, star_succ, star_succ_level, destroyed_level = reinforce(now, guard_destroy, sunday,starcatch)
+        now, g, guard_level, star_succ, star_succ_level, destroyed_level, c = reinforce(now, level, guard_destroy, succ_on_15,starcatch, discount_30p)
+        cost += c
 
         # gaurded
         if g:
@@ -55,20 +65,22 @@ def try_once(args):
     if not star_succ_level_list:
         star_succ_level_list = None
 
-    return now, trial, guard, guard_level_list, star_succ_level_list, destroyed_level
+    return now, trial, guard, guard_level_list, star_succ_level_list, destroyed_level, cost
 
-def reinforce(now: int, guard_destroy: bool, sunday: bool, starcatch: bool):
+def reinforce(now: int, level: int, guard_destroy: bool, succ_on_15: bool, starcatch: bool, discount_30p: bool):
     """
     reinforce
 
     Parameters
     ----------
     now : int
+        starforce level of item (0~ 24)
+    level: int
         level of item
     guard_destroy : bool
         guard destroy on 15, 16
-    sunday : bool
-        sunday event: 100% success on 15
+    succ_on_15 : bool
+        succ_on_15 event: 100% success on 15
     starcatch: bool
         use starcatch
 
@@ -86,19 +98,47 @@ def reinforce(now: int, guard_destroy: bool, sunday: bool, starcatch: bool):
         if star_succ is True, record current level. if not, None
     destroyed_level: int or None
         if item destroyed, record current level. if not, None
+    cost: int
+        cost of reinforce
     """
 
-    level = now
+    star_level = now
     guard = False
     guard_level = None
     star_succ = False
     star_succ_level = None
     destroyed_level = None
 
-    # sunday
-    if sunday and now == 15:
-        level = now + 1
-        return level, guard, guard_level, star_succ, star_succ_level, destroyed_level
+    #calc cost
+    if star_level < 10:
+        cost = 1000 + ((level**3) * (star_level + 1)) / 25
+    elif star_level == 10:
+        cost = 1000 + ((level**3) * (star_level + 1)**2.7) / 400
+    elif star_level == 11:
+        cost = 1000 + ((level**3) * (star_level + 1)**2.7) / 220
+    elif star_level == 12:
+        cost = 1000 + ((level**3) * (star_level + 1)**2.7) / 150
+    elif star_level == 13:
+        cost = 1000 + ((level**3) * (star_level + 1)**2.7) / 110
+    elif star_level == 14:
+        cost = 1000 + ((level**3) * (star_level + 1)**2.7) / 75
+    else:
+        cost = 1000 + ((level**3) * (star_level + 1)**2.7) / 200
+
+    cost = np.round(cost, -1)
+    cost_result = cost
+    if discount_30p:
+        cost_result *= 0.7
+    if guard_destroy and (star_level ==15 or star_level == 16):
+        if not (succ_on_15 and star_level == 15):
+            cost_result += cost
+
+
+    # succ_on_15
+    if succ_on_15:
+        if star_level == 5 or star_level == 10 or star_level == 15:
+            star_level = now + 1
+            return star_level, guard, guard_level, star_succ, star_succ_level, destroyed_level, cost_result
     
     d = dice()
 
@@ -116,13 +156,13 @@ def reinforce(now: int, guard_destroy: bool, sunday: bool, starcatch: bool):
             guard_level = now
             guard = True
             if now == 15:               
-                level = now
+                star_level = now
             else:
-                level = now -1
+                star_level = now -1
                 
         else:  
             destroyed_level = now
-            level = -1
+            star_level = -1
     elif d >= 1 - adjusted_success:
         # success
 
@@ -131,22 +171,33 @@ def reinforce(now: int, guard_destroy: bool, sunday: bool, starcatch: bool):
             star_succ = True
             star_succ_level = now
 
-        level = now + 1
+        star_level = now + 1
     else:
         # failed
         if now == 15 or now == 20:
-            level = now
+            star_level = now
         else:
-            level = now - 1
+            star_level = now - 1
 
-    return level, guard, guard_level, star_succ, star_succ_level, destroyed_level
-        
-        
+    return star_level, guard, guard_level, star_succ, star_succ_level, destroyed_level, cost_result
+            
 def dice():
     return random.random()
 
-def calc(now, target, N, guard_destroy, sunday, starcatch):
-    df = try_N(now, target, N, guard_destroy=guard_destroy, sunday=sunday, starcatch=starcatch)
+def format_number(number):
+    if number >= 100000000:  # 1억 이상
+        result = f'{number // 100000000}억'
+        remainder = number % 100000000
+        if remainder > 0:
+            result += f'{remainder // 10000}만'
+        return result
+    elif number >= 10000:  # 1만 이상
+        return f'{number // 10000}만'
+    else:
+        return str(number)
+    
+def calc(now, target, level, N, guard_destroy, succ_on_15, starcatch, discount_30p):
+    df = try_N(now, target, level, N, guard_destroy=guard_destroy, succ_on_15=succ_on_15, starcatch=starcatch, discount_30p=discount_30p)
 
     ###########
     # summary #
@@ -156,6 +207,10 @@ def calc(now, target, N, guard_destroy, sunday, starcatch):
     destroy_count = df.loc[df['level'] == -1].shape[0]
     success_rate = round(success_count / (success_count + destroy_count), 5) * 100
     destroy_rate = round(destroy_count / (success_count + destroy_count), 5) * 100
+
+    # cost
+    cost_mean = int(round(df['cost'].mean(), -1))
+    cost_median = int(round(df['cost'].median(), -1))
 
     # guard destroy
     guard_level_count = df['guard_number'].sum()
@@ -190,6 +245,27 @@ def calc(now, target, N, guard_destroy, sunday, starcatch):
             strokeWidth=0
         )
         return c
+    
+
+    ##############
+    # cost chart #
+    ##############
+    cost_df = df['cost'].reset_index()
+    cost_df['cost'] /= 100000000
+    min_cost = cost_df['cost'].min()
+    max_cost = cost_df['cost'].max()
+    
+    # Create bar chart
+    cost_chart = alt.Chart(cost_df).mark_bar(size=20).encode(
+        x=alt.X('cost:Q', axis=alt.Axis(grid=False, labelAngle=0), bin=alt.Bin(extent=[min_cost, max_cost], maxbins=20),).title('스타포스 비용 (억)'),
+        y=alt.Y('count():Q', title='count'),
+        tooltip=['count()']
+    ).configure_axis(
+        labelFontSize=12,
+        titleFontSize=14,
+    ).configure_view(
+        strokeWidth=0
+    )
 
 
     #########################
@@ -261,12 +337,14 @@ def calc(now, target, N, guard_destroy, sunday, starcatch):
     ##########
     # write
     st.write(f'달성률: **{round(success_rate, 3)}%**  파괴율: **{round(destroy_rate, 3)}%**  평균 강화횟수: **{round(df["trial"].mean(), 3)}회**')
+    st.write(f'소모한 평균 메소: **{format_number(cost_mean)} 메소** (중간값: **{format_number(cost_median)} 메소**)')
     st.write(f'파괴방지로 방어한 파괴 횟수 평균: **{round(guard_level_count / N, 3)}회**')
     st.write(f'실패할거 스타캐치로 성공시킨 횟수 평균: **{round(star_succ_level_count / N, 3)}회**')
     st.write()
     st.write('> 파괴 또는 목표 달성 시까지를 1회라고 했을 때 그래프의 ( )는 1회당 발생하는 비율')
 
     # draw chart
+    st.altair_chart(cost_chart, use_container_width=True)
     st.altair_chart(destroyed_level_chart, use_container_width=True)
     st.altair_chart(starcatch_chart, use_container_width=True)
     col1, col2 = st.columns(2)
@@ -277,17 +355,25 @@ def calc(now, target, N, guard_destroy, sunday, starcatch):
     
 
 def web():
-    now = st.number_input('현재 스타포스(기본 15)', 15, 24, value=None, placeholder="15 (15 ~ 24)")
-    target = st.number_input('목표 스타포스(기본 22)', 16, 25, value=None, placeholder="22 (16 ~ 25)")
-    N = st.number_input('시행횟수(기본 100,000)', 1, 300000, value=None, step=10000, placeholder="100,000 (1 ~ 300,000)")
+    
+    col1, col2 = st.columns(2)
+    with col1:
+        now = st.number_input('현재 스타포스(기본 15)', 0, 24, value=None, placeholder="15 (0 ~ 24)")
+    with col2:    
+        target = st.number_input('목표 스타포스(기본 22)', 1, 25, value=None, placeholder="22 (1 ~ 25)")
+    col1, col2 = st.columns(2)
+    with col1:
+        level = st.number_input('장비 레벨(기본 160)', 0, 250, value=None, step=10, placeholder='160')
+    with col2:    
+        N = st.number_input('시행횟수(기본 50,000)', 1, 300000, value=None, step=10000, placeholder="50,000 (1 ~ 100,000)")
+    
 
     starcatch = st.checkbox('스타캐치 사용', value=True)
     guard_destroy = st.checkbox('파괴방지', value=True)
 
-    # sunday = st.radio(
-    #     "썬데이 스타포스",
-    #     ["없음", "10성 이하에서 강화시 1+1", "5, 10, 15성에서 성공확률 100%", "강화비용 30% 할인", "샤이닝 스타포스"])
-    sunday = st.checkbox('5, 10, 15성에서 성공확률 100%')
+    sunday = st.radio(
+        "썬데이 스타포스",
+        ["없음", "5, 10, 15성에서 성공확률 100%", "강화비용 30% 할인", "샤이닝 스타포스"])
 
     btn = st.button('계산하기')
     if btn:
@@ -296,9 +382,20 @@ def web():
                 now = 15
             if target == None:
                 target = 22
+            if level == None:
+                level = 160
             if N == None:
-                N = 100000
-            calc(now, target, N, guard_destroy, sunday, starcatch)
+                N = 50000
+            succ_on_15 = False
+            discount_30p = False
+            if sunday == "5, 10, 15성에서 성공확률 100%":
+                succ_on_15 = True
+            elif sunday == "강화비용 30% 할인":
+                discount_30p = True
+            elif sunday == "샤이닝 스타포스":
+                succ_on_15 = True
+                discount_30p = True
+            calc(now, target, level, N, guard_destroy, succ_on_15, starcatch, discount_30p)
 
 if __name__ == '__main__':
     web()
