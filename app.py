@@ -221,6 +221,14 @@ def calc(now, target, level, N, guard_destroy, succ_on_15, starcatch, discount_3
     for index, value in star_succ_level_values.items():
         star_succ_level_count += len(index) * value
 
+    # write
+    st.write(f'달성률: **{round(success_rate, 3)}%**  파괴율: **{round(destroy_rate, 3)}%**  평균 강화횟수: **{round(df["trial"].mean(), 3)}회**')
+    st.write(f'소모한 평균 메소: **{format_number(cost_mean)} 메소** (중간값: **{format_number(cost_median)} 메소**)')
+    st.write(f'파괴방지로 방어한 파괴 횟수 평균: **{round(guard_level_count / N, 3)}회**')
+    st.write(f'실패할거 스타캐치로 성공시킨 횟수 평균: **{round(star_succ_level_count / N, 3)}회**')
+    st.write()
+    st.write('> 파괴 또는 목표 달성 시까지를 1회라고 했을 때 그래프의 ( )는 1회당 발생하는 비율')
+
     
     # chart function
     def chart(df, x_axis, y_axis, devide_by, title, parseInt=False):
@@ -337,14 +345,6 @@ def calc(now, target, level, N, guard_destroy, succ_on_15, starcatch, discount_3
     ##########
     # result #
     ##########
-    # write
-    st.write(f'달성률: **{round(success_rate, 3)}%**  파괴율: **{round(destroy_rate, 3)}%**  평균 강화횟수: **{round(df["trial"].mean(), 3)}회**')
-    st.write(f'소모한 평균 메소: **{format_number(cost_mean)} 메소** (중간값: **{format_number(cost_median)} 메소**)')
-    st.write(f'파괴방지로 방어한 파괴 횟수 평균: **{round(guard_level_count / N, 3)}회**')
-    st.write(f'실패할거 스타캐치로 성공시킨 횟수 평균: **{round(star_succ_level_count / N, 3)}회**')
-    st.write()
-    st.write('> 파괴 또는 목표 달성 시까지를 1회라고 했을 때 그래프의 ( )는 1회당 발생하는 비율')
-
     # draw chart
     st.altair_chart(cost_chart, use_container_width=True)
     st.altair_chart(destroyed_level_chart, use_container_width=True)
