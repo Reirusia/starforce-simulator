@@ -5,6 +5,7 @@ import pandas as pd
 from scipy.stats import percentileofscore
 import streamlit as st
 import altair as alt
+from stqdm import stqdm
 from multiprocessing import Pool
 
 
@@ -22,22 +23,20 @@ destroy2 = {15: 0.021, 16: 0.021, 17: 0.021, 18: 0.028, 19: 0.028, 20: 0.07, 21:
 
 destroy.update(destroy2)
 
-def try_N(now, target, level, N = 100000, guard_destroy=False, succ_on_15=False, starcatch=False, discount_30p=False):
-    # result = []
-
-    # for _ in range(N):
-    #     r = try_once(now, target, guard_destroy, succ_on_15, starcatch)
-    #     result.append(r)
+def try_N(now, target, level, N = 100000, spare_count=0, guard_destroy=False, succ_on_15=False, starcatch=False, discount_30p=False):
     with Pool() as p:
-        result = p.map(try_once, [(now, target, level, guard_destroy, succ_on_15, starcatch, discount_30p)]*N)
-    
+        result = p.map(try_once, [(now, target, level, spare_count, guard_destroy, succ_on_15, starcatch, discount_30p)]*N)
 
-    df = pd.DataFrame(result, columns=['level', 'trial', 'guard_number', 'guard_level', 'star_succ_level', 'destroyed_level', 'cost'], dtype=object)
+    # with progress:
+    #     with Pool() as pool:
+    #         result = stqdm(pool.map(try_once, [(now, target, level, spare_count, guard_destroy, succ_on_15, starcatch, discount_30p)]*N), total=N)
+
+    df = pd.DataFrame(result, columns=['level', 'trial', 'guard_number', 'guard_level', 'star_succ_level', 'destroyed_level', 'cost', 'used_spare'], dtype=object)
 
     return df
 
 def try_once(args):
-    now, target, level, guard_destroy, succ_on_15, starcatch, discount_30p = args
+    n, target, level, spare_count, guard_destroy, succ_on_15, starcatch, discount_30p = args
 
     trial = 0
     guard = 0
@@ -45,36 +44,53 @@ def try_once(args):
     star_succ_level_list = []
     cost = 0
     chance_time = 0
-    while (True):
-        trial += 1
-        now, g, guard_level, star_succ, star_succ_level, destroyed_level, c, d = reinforce(now, level, guard_destroy, succ_on_15,starcatch, discount_30p, chance_time)
-        cost += c
+    used_spare = 0
+    unlimited_spare = False
+    if spare_count == -1:
+        unlimited_spare = True
 
-        # gaurded
-        if g:
-            guard += 1
-            guard_level_list.append(guard_level)
-        
-        # success cause of starcatch
-        if star_succ:
-            star_succ_level_list.append(star_succ_level)
+    while(True):
+        now = n
+        while (True):
+            trial += 1
+            now, g, guard_level, star_succ, star_succ_level, destroyed_level, c, d = reinforce(now, level, guard_destroy, succ_on_15,starcatch, discount_30p, chance_time)
+            cost += c
 
-        # chance time
-        if d:
-            chance_time += 1
-        else:
-            chance_time = 0
+            # gaurded
+            if g:
+                guard += 1
+                guard_level_list.append(guard_level)
+            
+            # success cause of starcatch
+            if star_succ:
+                star_succ_level_list.append(star_succ_level)
 
-        # end
-        if now == -1 or now == target:
+            # chance time
+            if d:
+                chance_time += 1
+            else:
+                chance_time = 0
+
+            # end
+            if now == -1 or now == target:
+                break
+
+        if now == target:
+            break   
+        if unlimited_spare:
+            used_spare += 1
+            continue
+        if spare_count <= used_spare:
             break
+        else:
+            used_spare += 1
 
     if not guard_level_list:
         guard_level_list = None
     if not star_succ_level_list:
         star_succ_level_list = None
 
-    return now, trial, guard, guard_level_list, star_succ_level_list, destroyed_level, cost
+    return now, trial, guard, guard_level_list, star_succ_level_list, destroyed_level, cost, used_spare
 
 def reinforce(now: int, level: int, guard_destroy: bool, succ_on_15: bool, starcatch: bool, discount_30p: bool, chance_time: int):
     """
@@ -212,9 +228,9 @@ def format_number(number):
     else:
         return str(number)
     
-def calc(now, target, level, N, guard_destroy, succ_on_15, starcatch, discount_30p, debug=False):
+def calc(now, target, level, N, guard_destroy, succ_on_15, starcatch, discount_30p, spare_count, debug=False):
     time_df_start = time()
-    df = try_N(now, target, level, N, guard_destroy=guard_destroy, succ_on_15=succ_on_15, starcatch=starcatch, discount_30p=discount_30p)
+    df = try_N(now, target, level, N, spare_count=spare_count, guard_destroy=guard_destroy, succ_on_15=succ_on_15, starcatch=starcatch, discount_30p=discount_30p)
     time_df_end = time()
 
     ###########
@@ -242,24 +258,35 @@ def calc(now, target, level, N, guard_destroy, succ_on_15, starcatch, discount_3
         star_succ_level_count += len(index) * value
 
     # success df
-    success_df  = df[df['level'] == 22]
+    success_df  = df[df['level'] == target]
     success_cost_mean = int(round(success_df['cost'].mean(), -1))
     success_cost_median = int(round(success_df['cost'].median(), -1))
     success_mean_percentile = percentileofscore(success_df['cost'], success_cost_mean)
+
+    data = {
+        'index': ['전체', '성공한 것만'],
+        'colum': ['소모한 메소', '상위', '중간값(상위50%)'],
+        'data': [[format_number(cost_mean), f'{mean_percentile:.3f}%', format_number(cost_median)],
+              [format_number(success_cost_mean), f'{success_mean_percentile:.3f}%', format_number(success_cost_median)]],
+    }
+
+    table_df = pd.DataFrame(data['data'], columns=data['colum'], index=data['index'])
     
     time_summary_end = time()
 
     # write
-    st.write(f'달성률: **{round(success_rate, 3)}%**  파괴율: **{round(destroy_rate, 3)}%**  평균 강화횟수: **{round(df["trial"].mean(), 3)}회**')
-    st.write(f'소모한 평균 메소(전체): **{format_number(cost_mean)} 메소 [상위 {mean_percentile:.3f}%] (중간값: {format_number(cost_median)} 메소**)')
-    st.write(f'소모한 평균 메소(성공한 것만): **{format_number(success_cost_mean)} 메소 [상위 {success_mean_percentile:.3f}%] (중간값: {format_number(success_cost_median)} 메소**)')
+    st.write(f'달성률: **{round(success_rate, 3)}%**  실패율: **{round(destroy_rate, 3)}%**')
+    st.write(f'평균 강화횟수: **{round(df["trial"].mean(), 3)}회**  사용한 스페어 평균 개수: **{round(df["used_spare"].mean(), 3)}개**')
     st.write(f'파괴방지로 방어한 파괴 횟수 평균: **{round(guard_level_count / N, 3)}회**')
     st.write(f'실패할거 스타캐치로 성공시킨 횟수 평균: **{round(star_succ_level_count / N, 3)}회**')
+    # st.write(f'소모한 평균 메소(전체): **{format_number(cost_mean)} 메소 [상위 {mean_percentile:.3f}%] (중간값: {format_number(cost_median)} 메소**)')
+    # st.write(f'소모한 평균 메소(성공한 것만): **{format_number(success_cost_mean)} 메소 [상위 {success_mean_percentile:.3f}%] (중간값: {format_number(success_cost_median)} 메소**)')
+    st.table(table_df)
     if debug:
         st.write(f'시뮬레이션에 걸린 시간: {time_df_end-time_df_start:.5f}')
         st.write(f'요약에 걸린 시간: {time_summary_end-time_summary_start:.5f}')
     st.write()
-    st.write('> 파괴 또는 목표 달성 시까지를 1회라고 했을 때 그래프의 ( )는 1회당 발생하는 비율')
+    st.write('> 아이템 전부 파괴 또는 목표 달성 시까지를 1회라고 했을 때 그래프의 ( )는 1회당 발생하는 비율')
 
     
     # chart function
@@ -411,9 +438,7 @@ def calc(now, target, level, N, guard_destroy, succ_on_15, starcatch, discount_3
         for i in spent:
             st.write(f'{i:.5f}')
     
-
 def web():
-    
     col1, col2 = st.columns(2)
     with col1:
         now = st.number_input('현재 스타포스(기본 15)', 0, 24, value=None, placeholder="15 (0 ~ 24)")
@@ -425,8 +450,12 @@ def web():
     with col2:    
         N = st.number_input('시행횟수(기본 50,000)', 1, 300000, value=None, step=10000, placeholder="50,000 (1 ~ 100,000)")
     
+    spare = st.radio("스페어", ["없음", "무제한", "직접입력"], horizontal=True)
 
-    starcatch = st.checkbox('스타캐치 사용', value=True)
+    if spare == "직접입력":
+        spare_num = st.number_input("스페어 개수", 0, 100, value=None, step=1, placeholder='0 (0~100)')
+
+    starcatch = st.checkbox('스타캐치 사용', value=False)
     guard_destroy = st.checkbox('파괴방지', value=False)
 
     sunday = st.radio(
@@ -435,7 +464,10 @@ def web():
 
     btn = st.button('계산하기')
     if btn:
-        with st.spinner('Calculating'):
+        with st.spinner('please wait...'):
+            succ_on_15 = False
+            discount_30p = False
+            spare_count = 0
             if now == None:
                 now = 15
             if target == None:
@@ -443,9 +475,7 @@ def web():
             if level == None:
                 level = 160
             if N == None:
-                N = 50000
-            succ_on_15 = False
-            discount_30p = False
+                N = 50000     
             if sunday == "5, 10, 15성에서 성공확률 100%":
                 succ_on_15 = True
             elif sunday == "강화비용 30% 할인":
@@ -453,7 +483,17 @@ def web():
             elif sunday == "샤이닝 스타포스":
                 succ_on_15 = True
                 discount_30p = True
-            calc(now, target, level, N, guard_destroy, succ_on_15, starcatch, discount_30p, False)
+            if spare == "없음":
+                spare_count = 0
+            elif spare == "무제한":
+                spare_count = -1
+            elif spare == "직접입력":
+                if spare_num == None:
+                    spare_count = 0
+                else:
+                    spare_count = spare_num
+
+            calc(now, target, level, N, guard_destroy, succ_on_15, starcatch, discount_30p, spare_count, False)
 
 if __name__ == '__main__':
     web()
