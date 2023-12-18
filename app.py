@@ -5,7 +5,6 @@ import pandas as pd
 from scipy.stats import percentileofscore
 import streamlit as st
 import altair as alt
-from stqdm import stqdm
 from multiprocessing import Pool
 
 
