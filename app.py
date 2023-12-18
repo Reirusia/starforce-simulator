@@ -5,6 +5,7 @@ import pandas as pd
 from scipy.stats import percentileofscore
 import streamlit as st
 import altair as alt
+from stqdm import stqdm
 from multiprocessing import Pool
 
 
@@ -22,20 +23,15 @@ destroy2 = {15: 0.021, 16: 0.021, 17: 0.021, 18: 0.028, 19: 0.028, 20: 0.07, 21:
 
 destroy.update(destroy2)
 
-def try_N(now, target, level, N = 100000, spare_count=0, guard_destroy=False, succ_on_15=False, starcatch=False, discount_30p=False):
+def try_N(now, target, level, progress, N = 100000, spare_count=0, guard_destroy=False, succ_on_15=False, starcatch=False, discount_30p=False):
     with Pool() as p:
-        result = p.map(try_once, [(now, target, level, spare_count, guard_destroy, succ_on_15, starcatch, discount_30p)]*N)
-
-    # with progress:
-    #     with Pool() as pool:
-    #         result = stqdm(pool.map(try_once, [(now, target, level, spare_count, guard_destroy, succ_on_15, starcatch, discount_30p)]*N), total=N)
-
+        result = p.map(try_once, [(now, target, level, spare_count, progress, N, guard_destroy, succ_on_15, starcatch, discount_30p)]*N)
     df = pd.DataFrame(result, columns=['level', 'trial', 'guard_number', 'guard_level', 'star_succ_level', 'destroyed_level', 'cost', 'used_spare'], dtype=object)
 
     return df
 
 def try_once(args):
-    n, target, level, spare_count, guard_destroy, succ_on_15, starcatch, discount_30p = args
+    n, target, level, spare_count, progress, N, guard_destroy, succ_on_15, starcatch, discount_30p = args
 
     trial = 0
     guard = 0
@@ -88,6 +84,8 @@ def try_once(args):
         guard_level_list = None
     if not star_succ_level_list:
         star_succ_level_list = None
+    p = st.progress(0.0)
+    p.progress
 
     return now, trial, guard, guard_level_list, star_succ_level_list, destroyed_level, cost, used_spare
 
@@ -227,7 +225,7 @@ def format_number(number):
     else:
         return str(number)
     
-def calc(now, target, level, N, guard_destroy, succ_on_15, starcatch, discount_30p, spare_count, debug=False):
+def calc(now, target, level, N, guard_destroy, succ_on_15, starcatch, discount_30p, spare_count, progress, debug=False):
     time_df_start = time()
     df = try_N(now, target, level, N, spare_count=spare_count, guard_destroy=guard_destroy, succ_on_15=succ_on_15, starcatch=starcatch, discount_30p=discount_30p)
     time_df_end = time()
@@ -463,36 +461,36 @@ def web():
 
     btn = st.button('계산하기')
     if btn:
-        with st.spinner('please wait...'):
-            succ_on_15 = False
-            discount_30p = False
+        progress = st.progress('please wait...')
+        succ_on_15 = False
+        discount_30p = False
+        spare_count = 0
+        if now == None:
+            now = 15
+        if target == None:
+            target = 22
+        if level == None:
+            level = 160
+        if N == None:
+            N = 50000     
+        if sunday == "5, 10, 15성에서 성공확률 100%":
+            succ_on_15 = True
+        elif sunday == "강화비용 30% 할인":
+            discount_30p = True
+        elif sunday == "샤이닝 스타포스":
+            succ_on_15 = True
+            discount_30p = True
+        if spare == "없음":
             spare_count = 0
-            if now == None:
-                now = 15
-            if target == None:
-                target = 22
-            if level == None:
-                level = 160
-            if N == None:
-                N = 50000     
-            if sunday == "5, 10, 15성에서 성공확률 100%":
-                succ_on_15 = True
-            elif sunday == "강화비용 30% 할인":
-                discount_30p = True
-            elif sunday == "샤이닝 스타포스":
-                succ_on_15 = True
-                discount_30p = True
-            if spare == "없음":
+        elif spare == "무제한":
+            spare_count = -1
+        elif spare == "직접입력":
+            if spare_num == None:
                 spare_count = 0
-            elif spare == "무제한":
-                spare_count = -1
-            elif spare == "직접입력":
-                if spare_num == None:
-                    spare_count = 0
-                else:
-                    spare_count = spare_num
+            else:
+                spare_count = spare_num
 
-            calc(now, target, level, N, guard_destroy, succ_on_15, starcatch, discount_30p, spare_count, False)
+        calc(now, target, level, N, guard_destroy, succ_on_15, starcatch, discount_30p, spare_count, progress, False)
 
 if __name__ == '__main__':
     web()
